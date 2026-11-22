@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchNearbySensors,
   fetchSensorDetail,
@@ -6,7 +6,7 @@ import {
   sendTelemetry,
   uploadGeoJSON,
 } from "./api";
-import { SensorMap } from "./components/SensorMap";
+import { type MapFocusTarget, SensorMap } from "./components/SensorMap";
 import type {
   GeoJSONImportResult,
   NearbySensor,
@@ -14,6 +14,7 @@ import type {
   SensorFeatureCollection,
   TelemetryEvent,
 } from "./types";
+import { estimateAirQualityIDW } from "./utils/idw";
 
 const EMPTY_GEOJSON: SensorFeatureCollection = {
   type: "FeatureCollection",
@@ -53,6 +54,32 @@ export function App() {
   const [sendingTest, setSendingTest] = useState(false);
   const [importingGeoJSON, setImportingGeoJSON] = useState(false);
   const [importResult, setImportResult] = useState<GeoJSONImportResult | null>(null);
+  const [focusTarget, setFocusTarget] = useState<MapFocusTarget | null>(null);
+
+  const nearbyEstimate = useMemo(
+    () => estimateAirQualityIDW(nearbySensors),
+    [nearbySensors]
+  );
+
+  const clearNearbySelection = useCallback(() => {
+    setNearbyCenter(null);
+    setNearbySensors([]);
+    setNearbyMode(false);
+  }, []);
+
+  const focusCity = useCallback((lng: number, lat: number, zoom = 11) => {
+    setFocusTarget({ lng, lat, zoom, seq: Date.now() });
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        clearNearbySelection();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [clearNearbySelection]);
 
   const loadGeoJSON = useCallback(async () => {
     try {
@@ -141,6 +168,25 @@ export function App() {
           });
 
           setLiveEvents((prev) => [event, ...prev].slice(0, 6));
+
+          setNearbySensors((prev) =>
+            prev.map((sensor) =>
+              sensor.id === event.sensor_id
+                ? {
+                    ...sensor,
+                    latest_telemetry: {
+                      id: event.id,
+                      sensor: event.sensor_id,
+                      pm25: event.pm25,
+                      pm10: event.pm10,
+                      temperature: event.temperature,
+                      humidity: event.humidity,
+                      recorded_at: event.recorded_at,
+                    },
+                  }
+                : sensor
+            )
+          );
 
           if (selectedSensorIdRef.current === event.sensor_id) {
             const newReading = {
@@ -263,11 +309,30 @@ export function App() {
         <div className="header">
           <div>
             <h1>GeoPulse Mini</h1>
-            <p className="subtitle">Ankara Hava Kalitesi İzleme ({geojson.features.length} sensör)</p>
+            <p className="subtitle">
+              Ankara &amp; İstanbul Hava Kalitesi ({geojson.features.length} sensör)
+            </p>
           </div>
           <span className={`badge ${wsConnected ? "badge-ok" : "badge-warn"}`}>
             {wsConnected ? "WS Canlı" : "WS Bağlanıyor"}
           </span>
+        </div>
+
+        <div className="row">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => focusCity(32.8541, 39.9208, 11)}
+          >
+            Ankara
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => focusCity(29.01, 41.03, 11)}
+          >
+            İstanbul
+          </button>
         </div>
 
         {errorMsg && <div className="error-banner">{errorMsg}</div>}
@@ -292,7 +357,23 @@ export function App() {
               <option value={3000}>3 km</option>
               <option value={5000}>5 km</option>
             </select>
+            {nearbyCenter && (
+              <button
+                type="button"
+                className="btn btn-clear"
+                onClick={clearNearbySelection}
+                title="Seçili noktayı kaldır (Esc)"
+              >
+                Temizle
+              </button>
+            )}
           </div>
+
+          {nearbyMode && (
+            <p className="hint">
+              Haritada bir noktaya tıklayın (Çıkmak için Esc).
+            </p>
+          )}
 
           {nearbyCenter ? (
             <>
@@ -300,6 +381,31 @@ export function App() {
                 Merkez: {nearbyCenter.lat.toFixed(4)}, {nearbyCenter.lng.toFixed(4)} —{" "}
                 <strong>{nearbySensors.length}</strong> sensör
               </p>
+
+              {nearbyEstimate ? (
+                <div className="estimate-box">
+                  <div className="estimate-header">
+                    <span>Seçili Nokta IDW Tahmini ({nearbyEstimate.sensorCount} sensör)</span>
+                    <span
+                      className="estimate-badge"
+                      style={{ background: nearbyEstimate.color }}
+                    >
+                      {nearbyEstimate.category}
+                    </span>
+                  </div>
+                  <div className="estimate-metrics">
+                    <span>PM2.5: <strong>{nearbyEstimate.pm25}</strong></span>
+                    <span>PM10: <strong>{nearbyEstimate.pm10}</strong></span>
+                    <span>Sıcaklık: <strong>{nearbyEstimate.temperature}°C</strong></span>
+                    <span>Nem: <strong>{nearbyEstimate.humidity}%</strong></span>
+                  </div>
+                </div>
+              ) : (
+                <p className="hint">
+                  Bu yarıçap içinde tahmin hesaplanacak sensör bulunamadı.
+                </p>
+              )}
+
               <ul className="list">
                 {nearbySensors.map((s) => (
                   <li
@@ -317,7 +423,7 @@ export function App() {
             </>
           ) : (
             <p className="hint">
-              Butona tıklayıp harita üzerinde bir nokta seçerek yarıçaptaki sensörleri sorgulayın.
+              Butona tıklayıp harita üzerinde bir nokta seçerek yarıçaptaki sensörleri ve IDW hava kalitesi tahminini görün.
             </p>
           )}
         </section>
@@ -448,7 +554,9 @@ export function App() {
           nearbyRadius={nearbyRadius}
           nearbyCenter={nearbyCenter}
           nearbySensorIds={nearbySensors.map((s) => s.id)}
+          nearbyEstimate={nearbyEstimate}
           selectedSensorId={selectedSensorId}
+          focusTarget={focusTarget}
           onSelectSensor={(id) => void handleSelectSensor(id)}
           onMapClickNearby={handleMapClickNearby}
         />

@@ -7,6 +7,14 @@ import maplibregl, {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { SensorFeatureCollection } from "../types";
+import type { IDWEstimate } from "../utils/idw";
+
+export interface MapFocusTarget {
+  lng: number;
+  lat: number;
+  zoom: number;
+  seq: number;
+}
 
 interface SensorMapProps {
   geojson: SensorFeatureCollection;
@@ -14,7 +22,9 @@ interface SensorMapProps {
   nearbyRadius: number;
   nearbyCenter: { lat: number; lng: number } | null;
   nearbySensorIds: number[];
+  nearbyEstimate: IDWEstimate | null;
   selectedSensorId: number | null;
+  focusTarget: MapFocusTarget | null;
   onSelectSensor: (sensorId: number) => void;
   onMapClickNearby: (lat: number, lng: number) => void;
 }
@@ -124,7 +134,7 @@ function buildNearbyHighlightFilter(ids: number[]): FilterSpecification {
   ];
 }
 
-function buildPopupDOM(props: Record<string, unknown>): HTMLElement {
+function buildSensorPopupDOM(props: Record<string, unknown>): HTMLElement {
   const wrap = document.createElement("div");
   wrap.style.color = "#0f172a";
   wrap.style.fontFamily = "Inter, system-ui, sans-serif";
@@ -148,19 +158,71 @@ function buildPopupDOM(props: Record<string, unknown>): HTMLElement {
   return wrap;
 }
 
+function buildNearbyPopupDOM(estimate: IDWEstimate | null): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.style.color = "#0f172a";
+  wrap.style.fontFamily = "Inter, system-ui, sans-serif";
+  wrap.style.fontSize = "12px";
+  wrap.style.lineHeight = "1.45";
+
+  if (!estimate) {
+    const msg = document.createElement("div");
+    msg.style.fontWeight = "600";
+    msg.textContent = "Bu yarıçapta sensör bulunamadı";
+    wrap.appendChild(msg);
+    return wrap;
+  }
+
+  const header = document.createElement("div");
+  header.style.display = "flex";
+  header.style.alignItems = "center";
+  header.style.gap = "6px";
+  header.style.fontWeight = "700";
+
+  const badge = document.createElement("span");
+  badge.style.display = "inline-block";
+  badge.style.padding = "1px 6px";
+  badge.style.borderRadius = "999px";
+  badge.style.background = estimate.color;
+  badge.style.color = "#0f172a";
+  badge.style.fontSize = "11px";
+  badge.textContent = estimate.category;
+
+  const title = document.createElement("span");
+  title.textContent = `Tahmini Hava (${estimate.sensorCount} sensör)`;
+
+  header.appendChild(badge);
+  header.appendChild(title);
+  wrap.appendChild(header);
+
+  const row1 = document.createElement("div");
+  row1.style.marginTop = "4px";
+  row1.textContent = `PM2.5: ${estimate.pm25} | PM10: ${estimate.pm10} µg/m³`;
+  wrap.appendChild(row1);
+
+  const row2 = document.createElement("div");
+  row2.textContent = `Sıcaklık: ${estimate.temperature}°C | Nem: ${estimate.humidity}%`;
+  wrap.appendChild(row2);
+
+  return wrap;
+}
+
 export function SensorMap({
   geojson,
   nearbyMode,
   nearbyRadius,
   nearbyCenter,
   nearbySensorIds,
+  nearbyEstimate,
   selectedSensorId,
+  focusTarget,
   onSelectSensor,
   onMapClickNearby,
 }: SensorMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const popupRef = useRef<maplibregl.Popup | null>(null);
+  const sensorPopupRef = useRef<maplibregl.Popup | null>(null);
+  const nearbyPopupRef = useRef<maplibregl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const geojsonRef = useRef(geojson);
@@ -192,7 +254,6 @@ export function SensorMap({
     map.addControl(new maplibregl.NavigationControl(), "top-right");
 
     map.on("load", () => {
-      // 1. Sensor 1km coverage zones
       map.addSource("sensor-coverage", {
         type: "geojson",
         data: buildCoverageCollection(geojsonRef.current),
@@ -219,7 +280,6 @@ export function SensorMap({
         },
       });
 
-      // 2. Nearby query search radius circle & center pin
       const initialCenter = nearbyCenterRef.current;
       map.addSource("nearby-radius", {
         type: "geojson",
@@ -289,7 +349,6 @@ export function SensorMap({
         },
       });
 
-      // 3. Clustered sensor markers & labels
       map.addSource("sensors", {
         type: "geojson",
         data: geojsonRef.current as unknown as GeoJSON.FeatureCollection,
@@ -402,10 +461,10 @@ export function SensorMap({
         const sensorId = Number(props.id);
         const coords = feature.geometry.coordinates as [number, number];
 
-        popupRef.current?.remove();
-        popupRef.current = new maplibregl.Popup({ offset: 14 })
+        sensorPopupRef.current?.remove();
+        sensorPopupRef.current = new maplibregl.Popup({ offset: 14 })
           .setLngLat(coords)
-          .setDOMContent(buildPopupDOM(props))
+          .setDOMContent(buildSensorPopupDOM(props))
           .addTo(map);
 
         if (!Number.isNaN(sensorId)) {
@@ -415,7 +474,7 @@ export function SensorMap({
 
       map.on("click", (e) => {
         if (nearbyModeRef.current) {
-          popupRef.current?.remove();
+          sensorPopupRef.current?.remove();
           onMapClickNearbyRef.current(e.lngLat.lat, e.lngLat.lng);
         }
       });
@@ -437,7 +496,8 @@ export function SensorMap({
     mapRef.current = map;
 
     return () => {
-      popupRef.current?.remove();
+      sensorPopupRef.current?.remove();
+      nearbyPopupRef.current?.remove();
       map.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -462,13 +522,16 @@ export function SensorMap({
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    const pointSource = mapRef.current.getSource("nearby-point") as GeoJSONSource | undefined;
-    const radiusSource = mapRef.current.getSource("nearby-radius") as GeoJSONSource | undefined;
+    const map = mapRef.current;
+    const pointSource = map.getSource("nearby-point") as GeoJSONSource | undefined;
+    const radiusSource = map.getSource("nearby-radius") as GeoJSONSource | undefined;
     if (!pointSource || !radiusSource) return;
 
     if (!nearbyCenter) {
       pointSource.setData(emptyCollection<GeoJSON.Point>());
       radiusSource.setData(emptyCollection<GeoJSON.Polygon>());
+      nearbyPopupRef.current?.remove();
+      nearbyPopupRef.current = null;
       return;
     }
 
@@ -489,7 +552,24 @@ export function SensorMap({
       type: "FeatureCollection",
       features: [createCirclePolygon(nearbyCenter.lng, nearbyCenter.lat, nearbyRadius)],
     });
-  }, [nearbyCenter, nearbyRadius, mapReady]);
+
+    map.setPaintProperty(
+      "nearby-marker",
+      "circle-color",
+      nearbyEstimate ? nearbyEstimate.color : "#38bdf8"
+    );
+
+    if (!nearbyPopupRef.current) {
+      nearbyPopupRef.current = new maplibregl.Popup({
+        offset: 14,
+        closeButton: false,
+        closeOnClick: false,
+      }).addTo(map);
+    }
+    nearbyPopupRef.current
+      .setLngLat([nearbyCenter.lng, nearbyCenter.lat])
+      .setDOMContent(buildNearbyPopupDOM(nearbyEstimate));
+  }, [nearbyCenter, nearbyRadius, nearbyEstimate, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
@@ -506,6 +586,15 @@ export function SensorMap({
       duration: 500,
     });
   }, [selectedSensorId, mapReady]);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || !focusTarget) return;
+    mapRef.current.flyTo({
+      center: [focusTarget.lng, focusTarget.lat],
+      zoom: focusTarget.zoom,
+      duration: 900,
+    });
+  }, [focusTarget, mapReady]);
 
   return <div ref={containerRef} className="map-canvas" />;
 }

@@ -1,0 +1,102 @@
+name: GeoPulse Mini CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-tests:
+    name: Django & PostGIS Tests
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: geopulse
+          POSTGRES_USER: geopulse
+          POSTGRES_PASSWORD: geopulse_secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U geopulse -d geopulse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_DB: geopulse
+      POSTGRES_USER: geopulse
+      POSTGRES_PASSWORD: geopulse_secret
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: 5432
+      DJANGO_SECRET_KEY: ci-test-secret
+      DJANGO_DEBUG: "1"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install GDAL/GEOS/PROJ system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdal-bin libgdal-dev libgeos-dev libproj-dev libpq-dev
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run Django spatial & GIS ETL tests
+        working-directory: backend
+        run: python manage.py test sensors -v 2
+
+  go-tests:
+    name: Go Ingestion & WebSocket Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache-dependency-path: ingest/go.mod
+
+      - name: Download modules, test, and build
+        working-directory: ingest
+        run: |
+          go mod tidy
+          go test -v ./...
+          go build ./...
+
+  frontend-build:
+    name: React & TypeScript Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package.json
+
+      - name: Install dependencies and build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build

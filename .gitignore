@@ -1,0 +1,25 @@
+# Environment
+.env
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+.pytest_cache/
+venv/
+.venv/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Go
+ingest/ingest-server
+
+# Data & Logs
+pgdata/
+*.log
+.DS_Store
+Thumbs.db

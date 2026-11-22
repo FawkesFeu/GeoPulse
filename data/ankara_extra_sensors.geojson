@@ -1,0 +1,31 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "code": "ANK-CANKAYA-ATAKULE",
+        "name": "Atakule Çankaya",
+        "district": "Çankaya",
+        "is_active": true
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [32.8562, 39.8861]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "code": "ANK-GOLBASI-MOGAN",
+        "name": "Mogan Gölü",
+        "district": "Gölbaşı",
+        "is_active": true
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [32.7963, 39.7844]
+      }
+    }
+  ]
+}

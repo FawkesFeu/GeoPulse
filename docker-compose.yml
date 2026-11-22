@@ -58,6 +58,18 @@ services:
     networks:
       - geopulse-net
 
+  simulator:
+    build:
+      context: ./ingest
+      dockerfile: Dockerfile
+    container_name: geopulse-simulator
+    command: ["./simulator", "-url", "http://ingest:8080/ingest/telemetry", "-interval", "4s"]
+    depends_on:
+      - ingest
+    restart: unless-stopped
+    networks:
+      - geopulse-net
+
   frontend:
     build:
       context: ./frontend

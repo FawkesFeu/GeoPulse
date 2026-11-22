@@ -225,6 +225,22 @@ body,
   width: 100%;
 }
 
+.map-info-box {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  max-width: 340px;
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #e2e8f0;
+  pointer-events: none;
+}
+
 .legend {
   position: absolute;
   bottom: 16px;

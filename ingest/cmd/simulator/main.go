@@ -36,6 +36,12 @@ var ankaraSensors = []struct {
 	{"ANK-BATIKENT", 17.5},
 	{"ANK-KECIOREN", 28.0},
 	{"ANK-ETIMESGUT", 23.0},
+	{"IST-KADIKOY", 21.5},
+	{"IST-BESIKTAS", 27.0},
+	{"IST-TAKSIM", 30.0},
+	{"IST-USKUDAR", 19.0},
+	{"IST-BAKIRKOY", 24.0},
+	{"IST-SARIYER", 12.5},
 }
 
 func round1(v float64) float64 {

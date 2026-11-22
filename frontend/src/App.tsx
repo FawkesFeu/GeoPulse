@@ -452,6 +452,17 @@ export function App() {
           onSelectSensor={(id) => void handleSelectSensor(id)}
           onMapClickNearby={handleMapClickNearby}
         />
+        <div className="map-info-box">
+          <div>
+            <strong>PM2.5 / PM10 (µg/m³):</strong> İnce ve kaba hava partikül yoğunluğu
+          </div>
+          <div>
+            <strong>°C / %:</strong> Sıcaklık ve bağıl nem
+          </div>
+          <div>
+            <strong>Daireler:</strong> 1 km sensör kapsama alanı (PM2.5 rengine göre canlı)
+          </div>
+        </div>
         <div className="legend">
           <span>
             <i className="dot" style={{ background: "#22c55e" }} />

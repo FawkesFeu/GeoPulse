@@ -445,7 +445,9 @@ export function App() {
         <SensorMap
           geojson={geojson}
           nearbyMode={nearbyMode}
+          nearbyRadius={nearbyRadius}
           nearbyCenter={nearbyCenter}
+          nearbySensorIds={nearbySensors.map((s) => s.id)}
           selectedSensorId={selectedSensorId}
           onSelectSensor={(id) => void handleSelectSensor(id)}
           onMapClickNearby={handleMapClickNearby}
